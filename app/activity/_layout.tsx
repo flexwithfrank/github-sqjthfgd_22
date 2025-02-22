@@ -47,16 +47,16 @@ export default function ActivityLayout() {
         <Tabs.Screen
           name="overall"
           options={{
-            title: 'Overall Activity',
+            title: 'Activity',
             tabBarIcon: ({ color }) => (
-              <MaterialCommunityIcons name="chart-timeline-variant" size={24} color={color} />
+              <MaterialCommunityIcons name="chart-timeline-variant-shimmer" size={24} color={color} />
             ),
           }}
         />
         <Tabs.Screen
           name="history"
           options={{
-            title: 'Class History',
+            title: 'Workouts',
             tabBarIcon: ({ color }) => (
               <MaterialCommunityIcons name="history" size={24} color={color} />
             ),

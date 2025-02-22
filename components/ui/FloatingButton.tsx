@@ -12,9 +12,13 @@ export function FloatingButton() {
   }, []);
   
    // Hide button if we're on a post page or challenge page
-    if (pathname.startsWith('/post/') || pathname.startsWith('/challenge/')) {
-      return null;
-    }
+          if (
+        pathname.startsWith('/post/') ||
+        pathname.includes('/challenge') ||
+        pathname.includes('/ranking')
+      ) {
+        return null;
+      }
 
   return (
     <TouchableOpacity

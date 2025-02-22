@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Keyboard,
   ScrollView,
   ActivityIndicator,
+  Image,  // Add this import
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
@@ -24,12 +25,33 @@ interface AddActivitySheetProps {
   onSuccess?: () => void;
 }
 
+type WorkoutOption = {
+  id: string;
+  name: string;
+  category: string;
+  icon: string;
+};
+
+type Trainer = {
+  id: string;
+  display_name: string;
+  avatar_url: string | null;
+  role: string;
+  role_verified: boolean;
+};
+
 export function AddActivitySheet({ visible, onClose, onSuccess }: AddActivitySheetProps) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
   const [isTimePickerVisible, setTimePickerVisibility] = useState(false);
+  const [workoutOptions, setWorkoutOptions] = useState<WorkoutOption[]>([]);
+  const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
+  const [showTrainerPicker, setShowTrainerPicker] = useState(false);
+  const [selectedWorkout, setSelectedWorkout] = useState<WorkoutOption | null>(null);
+  const [selectedTrainer, setSelectedTrainer] = useState<Trainer | null>(null);
 
   const [form, setForm] = useState({
     title: '',
@@ -42,6 +64,41 @@ export function AddActivitySheet({ visible, onClose, onSuccess }: AddActivityShe
     notes: '',
   });
 
+  useEffect(() => {
+    fetchWorkoutOptions();
+    fetchTrainers();
+  }, []);
+
+  const fetchWorkoutOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('workout_options')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      setWorkoutOptions(data || []);
+    } catch (error) {
+      console.error('Error fetching workout options:', error);
+    }
+  };
+
+  const fetchTrainers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, display_name, avatar_url, role, role_verified')
+        .eq('role', 'trainer')
+        .eq('role_verified', true)
+        .order('display_name');
+
+      if (error) throw error;
+      setTrainers(data || []);
+    } catch (error) {
+      console.error('Error fetching trainers:', error);
+    }
+  };
+
   const handleSubmit = async () => {
     try {
       setLoading(true);
@@ -51,8 +108,8 @@ export function AddActivitySheet({ visible, onClose, onSuccess }: AddActivityShe
       if (!user) throw new Error('Not authenticated');
 
       // Validate inputs
-      if (!form.title.trim()) {
-        setError('Title is required');
+      if (!selectedWorkout) {
+        setError('Please select a workout type');
         return;
       }
 
@@ -69,23 +126,19 @@ export function AddActivitySheet({ visible, onClose, onSuccess }: AddActivityShe
       const minutes = form.start_time.getMinutes().toString().padStart(2, '0');
       const formattedTime = `${hours}:${minutes}`;
 
-      console.log('Submitting activity:', {
-        date: formattedDate,
-        time: formattedTime
-      });
-
       // Create activity
       const { error: insertError } = await supabase
         .from('activities')
         .insert({
           user_id: user.id,
-          title: form.title.trim(),
-          subtitle: form.subtitle.trim(),
+          title: selectedWorkout.name,
+          subtitle: selectedWorkout.category,
           activity_date: formattedDate,
           start_time: formattedTime,
           duration_minutes: parseInt(form.duration_minutes),
           fitness_studio: form.fitness_studio.trim(),
-          trainer: form.trainer.trim(),
+          trainer_id: selectedTrainer?.id || null,
+          trainer_name: selectedTrainer?.display_name || null,
           notes: form.notes.trim(),
         });
 
@@ -102,6 +155,8 @@ export function AddActivitySheet({ visible, onClose, onSuccess }: AddActivityShe
         trainer: '',
         notes: '',
       });
+      setSelectedWorkout(null);
+      setSelectedTrainer(null);
 
       onSuccess?.();
       onClose();
@@ -156,6 +211,114 @@ export function AddActivitySheet({ visible, onClose, onSuccess }: AddActivityShe
     hideTimePicker();
   };
 
+  const WorkoutPicker = () => (
+    <Modal
+      visible={showWorkoutPicker}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowWorkoutPicker(false)}
+    >
+      <TouchableWithoutFeedback onPress={() => setShowWorkoutPicker(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.pickerContainer}>
+            <Text style={styles.pickerTitle}>Select Workout</Text>
+            <ScrollView style={styles.workoutList}>
+              {workoutOptions.map((workout) => (
+                <TouchableOpacity
+                  key={workout.id}
+                  style={styles.workoutOption}
+                  onPress={() => {
+                    setSelectedWorkout(workout);
+                    setShowWorkoutPicker(false);
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name={workout.icon as any}
+                    size={24}
+                    color="#b0fb50"
+                  />
+                  <View style={styles.workoutInfo}>
+                    <Text style={styles.workoutName}>{workout.name}</Text>
+                    <Text style={styles.workoutCategory}>{workout.category}</Text>
+                  </View>
+                  {selectedWorkout?.id === workout.id && (
+                    <MaterialCommunityIcons
+                      name="check"
+                      size={24}
+                      color="#b0fb50"
+                    />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+
+  const TrainerPicker = () => (
+    <Modal
+      visible={showTrainerPicker}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowTrainerPicker(false)}
+    >
+      <TouchableWithoutFeedback onPress={() => setShowTrainerPicker(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.pickerContainer}>
+            <Text style={styles.pickerTitle}>Select Trainer</Text>
+            <ScrollView style={styles.workoutList}>
+              {trainers.map((trainer) => (
+                <TouchableOpacity
+                  key={trainer.id}
+                  style={styles.workoutOption}
+                  onPress={() => {
+                    setSelectedTrainer(trainer);
+                    setShowTrainerPicker(false);
+                  }}
+                >
+                  <View style={styles.trainerAvatar}>
+                    {trainer.avatar_url ? (
+                      <Image
+                        source={{ uri: trainer.avatar_url }}
+                        style={styles.avatarImage}
+                      />
+                    ) : (
+                      <MaterialCommunityIcons
+                        name="account"
+                        size={24}
+                        color="#666666"
+                      />
+                    )}
+                  </View>
+                  <View style={styles.workoutInfo}>
+                    <Text style={styles.workoutName}>{trainer.display_name}</Text>
+                    <View style={styles.verifiedBadge}>
+                      <MaterialCommunityIcons
+                        name="check-decagram"
+                        size={16}
+                        color="#b0fb50"
+                      />
+                      <Text style={styles.verifiedText}>Verified Trainer</Text>
+                    </View>
+                  </View>
+                  {selectedTrainer?.id === trainer.id && (
+                    <MaterialCommunityIcons
+                      name="check"
+                      size={24}
+                      color="#b0fb50"
+                    />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+
   return (
     <Modal
       visible={visible}
@@ -182,25 +345,33 @@ export function AddActivitySheet({ visible, onClose, onSuccess }: AddActivityShe
             <ScrollView style={styles.content}>
               <View style={styles.form}>
                 <View style={styles.formGroup}>
-                  <Text style={styles.label}>Activity Title</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={form.title}
-                    onChangeText={(text) => setForm(prev => ({ ...prev, title: text }))}
-                    placeholder="Enter activity title"
-                    placeholderTextColor="#666666"
-                  />
-                </View>
-
-                <View style={styles.formGroup}>
-                  <Text style={styles.label}>Subtitle (Optional)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={form.subtitle}
-                    onChangeText={(text) => setForm(prev => ({ ...prev, subtitle: text }))}
-                    placeholder="Add subtitle"
-                    placeholderTextColor="#666666"
-                  />
+                  <Text style={styles.label}>Workout Type</Text>
+                  <TouchableOpacity
+                    style={styles.workoutSelector}
+                    onPress={() => setShowWorkoutPicker(true)}
+                  >
+                    {selectedWorkout ? (
+                      <View style={styles.selectedWorkout}>
+                        <MaterialCommunityIcons
+                          name={selectedWorkout.icon as any}
+                          size={24}
+                          color="#b0fb50"
+                        />
+                        <Text style={styles.selectedWorkoutText}>
+                          {selectedWorkout.name}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.workoutPlaceholder}>
+                        Select workout type
+                      </Text>
+                    )}
+                    <MaterialCommunityIcons
+                      name="chevron-down"
+                      size={24}
+                      color="#666666"
+                    />
+                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.formGroup}>
@@ -258,13 +429,41 @@ export function AddActivitySheet({ visible, onClose, onSuccess }: AddActivityShe
 
                 <View style={styles.formGroup}>
                   <Text style={styles.label}>Trainer (Optional)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={form.trainer}
-                    onChangeText={(text) => setForm(prev => ({ ...prev, trainer: text }))}
-                    placeholder="Enter trainer name"
-                    placeholderTextColor="#666666"
-                  />
+                  <TouchableOpacity
+                    style={styles.workoutSelector}
+                    onPress={() => setShowTrainerPicker(true)}
+                  >
+                    {selectedTrainer ? (
+                      <View style={styles.selectedWorkout}>
+                        <View style={styles.trainerAvatar}>
+                          {selectedTrainer.avatar_url ? (
+                            <Image
+                              source={{ uri: selectedTrainer.avatar_url }}
+                              style={styles.avatarImage}
+                            />
+                          ) : (
+                            <MaterialCommunityIcons
+                              name="account"
+                              size={24}
+                              color="#666666"
+                            />
+                          )}
+                        </View>
+                        <Text style={styles.selectedWorkoutText}>
+                          {selectedTrainer.display_name}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.workoutPlaceholder}>
+                        Select trainer (optional)
+                      </Text>
+                    )}
+                    <MaterialCommunityIcons
+                      name="chevron-down"
+                      size={24}
+                      color="#666666"
+                    />
+                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.formGroup}>
@@ -311,6 +510,9 @@ export function AddActivitySheet({ visible, onClose, onSuccess }: AddActivityShe
               onConfirm={handleConfirmTime}
               onCancel={hideTimePicker}
             />
+
+            <WorkoutPicker />
+            <TrainerPicker />
           </View>
         </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
@@ -402,5 +604,92 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 16,
     fontWeight: '600',
+  },
+  workoutSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#2a2a2a',
+    borderRadius: 8,
+    padding: 12,
+  },
+  selectedWorkout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  selectedWorkoutText: {
+    color: '#ffffff',
+    fontSize: 16,
+  },
+  workoutPlaceholder: {
+    color: '#666666',
+    fontSize: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  pickerContainer: {
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+  },
+  pickerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#ffffff',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+  },
+  workoutList: {
+    padding: 20,
+  },
+  workoutOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+  },
+  workoutInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  workoutName: {
+    fontSize: 16,
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  workoutCategory: {
+    fontSize: 14,
+    color: '#666666',
+    marginTop: 4,
+  },
+  trainerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#2a2a2a',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  verifiedText: {
+    color: '#b0fb50',
+    fontSize: 12,
+    marginLeft: 4,
   },
 });

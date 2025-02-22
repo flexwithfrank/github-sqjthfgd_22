@@ -27,14 +27,21 @@ export default function OverallActivity() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);  // New state for background updates
 
   useEffect(() => {
     fetchActivityStats();
-  }, [timeRange]);
+  }, []);
+
+  const handleTimeRangeChange = async (newRange: TimeRange) => {
+    setTimeRange(newRange);
+    setIsUpdating(true);
+    await fetchActivityStats();
+    setIsUpdating(false);
+  };
 
   const fetchActivityStats = async () => {
     try {
-      setLoading(true);
       setError(null);
       
       const { data: { user } } = await supabase.auth.getUser();
@@ -55,35 +62,36 @@ export default function OverallActivity() {
           startDate.setDate(now.getDate() - 7);
           break;
         case 'month':
-          startDate.setDate(1); // First day of current month
+          startDate.setDate(1);
           break;
       }
 
-      // Format dates for SQL query
-      const formattedStartDate = startDate.toISOString().split('T')[0];
-      const formattedEndDate = now.toISOString().split('T')[0];
+      // Format dates for SQL query - include time component for more precise filtering
+      const formattedStartDate = startDate.toISOString();
+      const formattedEndDate = now.toISOString();
 
-      console.log('Fetching activities:', {
-        startDate: formattedStartDate,
-        endDate: formattedEndDate
-      });
-
-      // Fetch activities within date range
+      // Updated query to select all necessary fields and use proper date filtering
       const { data, error: fetchError } = await supabase
         .from('activities')
-        .select('duration_minutes')
+        .select('*')  // Select all fields to ensure we don't miss any activities
         .eq('user_id', user.id)
-        .gte('activity_date', formattedStartDate)
-        .lte('activity_date', formattedEndDate);
+        .gte('created_at', formattedStartDate)  // Use created_at instead of activity_date
+        .lte('created_at', formattedEndDate)
+        .order('created_at', { ascending: false });
 
       if (fetchError) throw fetchError;
 
-      const totalDuration = data?.reduce((sum, activity) => sum + activity.duration_minutes, 0) || 0;
+      // Process the data
+      const totalDuration = data?.reduce((sum, activity) => {
+        // Ensure we only count activities with valid duration
+        return sum + (activity.duration_minutes || 0);
+      }, 0) || 0;
 
       setStats({
         total_activities: data?.length || 0,
         total_duration: totalDuration,
       });
+
     } catch (error) {
       console.error('Error fetching activity stats:', error);
       setError('Failed to load activity statistics');
@@ -144,7 +152,7 @@ export default function OverallActivity() {
         <View style={styles.timeRangeContainer}>
           <TouchableOpacity
             style={[styles.timeRangeButton, timeRange === 'day' && styles.activeTimeRange]}
-            onPress={() => setTimeRange('day')}
+            onPress={() => handleTimeRangeChange('day')}
           >
             <Text style={[styles.timeRangeText, timeRange === 'day' && styles.activeTimeRangeText]}>
               TODAY
@@ -152,7 +160,7 @@ export default function OverallActivity() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.timeRangeButton, timeRange === 'week' && styles.activeTimeRange]}
-            onPress={() => setTimeRange('week')}
+            onPress={() => handleTimeRangeChange('week')}
           >
             <Text style={[styles.timeRangeText, timeRange === 'week' && styles.activeTimeRangeText]}>
               WEEK
@@ -160,7 +168,7 @@ export default function OverallActivity() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.timeRangeButton, timeRange === 'month' && styles.activeTimeRange]}
-            onPress={() => setTimeRange('month')}
+            onPress={() => handleTimeRangeChange('month')}
           >
             <Text style={[styles.timeRangeText, timeRange === 'month' && styles.activeTimeRangeText]}>
               MONTH
@@ -184,12 +192,18 @@ export default function OverallActivity() {
           <View style={styles.statsContainer}>
             <View style={styles.circleContainer}>
               <View style={styles.circle}>
-                <Text style={styles.circleNumber}>{stats.total_activities}</Text>
-                <Text style={styles.circleLabel}>Activities</Text>
+                {isUpdating ? (
+                  <ActivityIndicator color="#b0fb50" style={styles.inlineLoader} />
+                ) : (
+                  <>
+                    <Text style={styles.circleNumber}>{stats.total_activities}</Text>
+                    <Text style={styles.circleLabel}>Activities</Text>
+                  </>
+                )}
               </View>
             </View>
 
-            <View style={styles.additionalStats}>
+            <View style={[styles.additionalStats, isUpdating && styles.updating]}>
               <View style={styles.statItem}>
                 <MaterialCommunityIcons name="clock-outline" size={24} color="#666666" />
                 <Text style={styles.statLabel}>Total Time</Text>
@@ -350,5 +364,11 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 16,
     fontWeight: '600',
+  },
+  inlineLoader: {
+    padding: 20,
+  },
+  updating: {
+    opacity: 0.5,
   },
 });

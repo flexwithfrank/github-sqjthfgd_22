@@ -76,7 +76,7 @@ export default function TabLayout() {
             title: 'Rankings',
             tabBarIcon: ({ focused, size, color }) => (
               <MaterialCommunityIcons 
-                name={focused ? "chart-bar" : "chart-bar-stacked"} 
+                name={focused ? "chart-timeline-variant-shimmer" : "chart-timeline-variant"} 
                 size={size} 
                 color={color} 
               />

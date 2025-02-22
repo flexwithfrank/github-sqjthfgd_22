@@ -114,7 +114,13 @@ export default function ClassHistory() {
       <View style={styles.classCard}>
         <View style={styles.classInfo}>
           <View style={styles.timeContainer}>
-            <Text style={styles.time}>{item.start_time}</Text>
+            <Text style={styles.time}>
+              {new Date(`${item.activity_date}T${item.start_time}`).toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: 'numeric',
+                hour12: true,
+              })}
+            </Text>
             <Text style={styles.duration}>({item.duration_minutes}min)</Text>
           </View>
           <View style={styles.classDetails}>

@@ -381,7 +381,7 @@ const styles = StyleSheet.create({
   rankBadge: {
     position: 'absolute',
     top: -10,
-    right: -10, // Ensure the same position for all rank badges
+    right: 10, // Ensure the same position for all rank badges
     width: 24,
     height: 24,
     borderRadius: 12,
