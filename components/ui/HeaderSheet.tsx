@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Animated, Platform, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -13,6 +13,30 @@ interface HeaderSheetProps {
 export function HeaderSheet({ visible, onClose }: HeaderSheetProps) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      checkAdminStatus();
+    }
+  }, [visible]);
+
+  const checkAdminStatus = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('admin, role_verified')
+        .eq('id', user.id)
+        .single();
+
+      setIsAdmin(profile?.admin && profile?.role_verified);
+    } catch (error) {
+      console.error('Error checking admin status:', error);
+    }
+  };
 
   const handleSignOut = async () => {
     setLoading(true);
@@ -84,6 +108,14 @@ export function HeaderSheet({ visible, onClose }: HeaderSheetProps) {
         onClose();
       },
     },
+    ...(isAdmin ? [{
+      icon: 'shield-crown',
+      label: 'Admin Panel',
+      onPress: () => {
+        router.push('/admin/challenges');
+        onClose();
+      },
+    }] : []),
     {
       icon: 'cog-outline',
       label: 'Settings',
