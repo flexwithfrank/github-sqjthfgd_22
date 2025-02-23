@@ -466,7 +466,7 @@ export default function HomeScreen() {
           >
             <MaterialCommunityIcons
               name="reply-outline"
-              size={18}
+              size={20}
               color="#666666"
             />
           </TouchableOpacity>
@@ -480,7 +480,7 @@ export default function HomeScreen() {
           >
             <MaterialCommunityIcons
               name={isLiked ? 'heart' : 'heart-outline'}
-              size={18}
+              size={20}
               color={isLiked ? '#ff4444' : '#666666'}
             />
             {item.likes_count > 0 && (
@@ -499,7 +499,7 @@ export default function HomeScreen() {
           >
             <MaterialCommunityIcons
               name="share-variant-outline"
-              size={18}
+              size={20}
               color="#666666"
             />
           </TouchableOpacity>
@@ -598,7 +598,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: '#ffffff',
-    marginTop: 4,
+    marginTop: 12,
   },
   postActions: {
     flexDirection: 'row',

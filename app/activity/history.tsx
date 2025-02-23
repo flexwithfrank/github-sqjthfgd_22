@@ -35,11 +35,15 @@ export default function ClassHistory() {
   const [error, setError] = useState<string | null>(null);
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(
+    null
+  );
 
   const fetchActivities = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data, error } = await supabase
@@ -90,7 +94,7 @@ export default function ClassHistory() {
               if (error) throw error;
 
               // Remove activity from local state
-              setActivities(activities.filter(a => a.id !== activity.id));
+              setActivities(activities.filter((a) => a.id !== activity.id));
               setShowMenu(false);
               setSelectedActivity(null);
             } catch (error) {
@@ -103,62 +107,73 @@ export default function ClassHistory() {
     );
   };
 
-  const renderItem = ({ item }: { item: Activity }) => (
-    <View style={styles.historyItem}>
-      <Text style={styles.date}>
-        {new Date(item.activity_date).toLocaleDateString('en-US', {
-          weekday: 'long',
-          month: 'short',
-          day: 'numeric',
-        })}
-      </Text>
-      <View style={styles.classCard}>
-        <View style={styles.classInfo}>
-          <View style={styles.timeContainer}>
-            <Text style={styles.time}>
-              {new Date(`${item.activity_date}T${item.start_time}`).toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: 'numeric',
-                hour12: true,
-              })}
-            </Text>
-            <Text style={styles.duration}>({item.duration_minutes}min)</Text>
+  const renderItem = ({ item }: { item: Activity }) => {
+    // Create date object and adjust for Pacific timezone
+    const date = new Date(`${item.activity_date}T00:00:00-08:00`);
+
+    return (
+      <View style={styles.historyItem}>
+        <Text style={styles.date}>
+          {date.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'short',
+            day: 'numeric',
+            timeZone: 'America/Los_Angeles'
+          })}
+        </Text>
+        <View style={styles.classCard}>
+          <View style={styles.classInfo}>
+            <View style={styles.timeContainer}>
+              <Text style={styles.time}>
+                {new Date(`${item.activity_date}T${item.start_time}-08:00`).toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: 'numeric',
+                  hour12: true,
+                  timeZone: 'America/Los_Angeles'
+                })}
+              </Text>
+              <Text style={styles.duration}>({item.duration_minutes}min)</Text>
+            </View>
+            <View style={styles.classDetails}>
+              <Text style={styles.type}>{item.subtitle || 'ACTIVITY'}</Text>
+              <Text style={styles.title}>{item.title}</Text>
+              {item.fitness_studio && (
+                <Text style={styles.location}>{item.fitness_studio}</Text>
+              )}
+              {item.trainer_name && (
+                <View style={styles.trainerContainer}>
+                  <MaterialCommunityIcons
+                    name="account-check"
+                    size={16}
+                    color="#b0fb50"
+                  />
+                  <Text style={styles.trainerName}>w/ {item.trainer_name}</Text>
+                </View>
+              )}
+            </View>
           </View>
-          <View style={styles.classDetails}>
-            <Text style={styles.type}>{item.subtitle || 'ACTIVITY'}</Text>
-            <Text style={styles.title}>{item.title}</Text>
-            {item.fitness_studio && (
-              <Text style={styles.location}>{item.fitness_studio}</Text>
-            )}
-            {item.trainer_name && (
-              <View style={styles.trainerContainer}>
-                <MaterialCommunityIcons name="account-check" size={16} color="#b0fb50" />
-                <Text style={styles.trainerName}>w/ {item.trainer_name}</Text>
-              </View>
-            )}
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={styles.moreButton}
+              onPress={() => {
+                setSelectedActivity(item);
+                setShowMenu(true);
+              }}
+            >
+              <MaterialCommunityIcons
+                name="dots-horizontal"
+                size={24}
+                color="#666666"
+              />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.bookAgainButton}>
+              <Text style={styles.bookAgainText}>Book Again</Text>
+            </TouchableOpacity>
           </View>
-        </View>
-        <View style={styles.actions}>
-          <TouchableOpacity 
-            style={styles.moreButton}
-            onPress={() => {
-              setSelectedActivity(item);
-              setShowMenu(true);
-            }}
-          >
-            <MaterialCommunityIcons
-              name="dots-horizontal"
-              size={24}
-              color="#666666"
-            />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.bookAgainButton}>
-            <Text style={styles.bookAgainText}>Book Again</Text>
-          </TouchableOpacity>
         </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   if (loading) {
     return (

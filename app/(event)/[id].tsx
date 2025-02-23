@@ -52,6 +52,9 @@ export default function EventDetailsScreen() {
   useEffect(() => {
     fetchEvent();
     checkRSVPStatus();
+  }, [id]);
+
+  useEffect(() => {
     fetchAttendeeCount();
   }, [id]);
 

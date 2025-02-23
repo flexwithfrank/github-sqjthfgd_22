@@ -331,23 +331,13 @@ export default function MessagesScreen() {
       return null;
     }
 
-    // Determine if this is a self-message (all participants are current user)
-    const isSelfMessage = conversation.participants.every(
-      (p) => p.profiles && p.profiles.id === currentUserId
-    );
-
     // Fixed avatar logic
-    const avatarUrl =
-      conversation.participants.find(
-        (p) => p.profiles && p.profiles.id !== currentUserId
-      )?.profiles?.avatar_url || otherParticipant.avatar_url;
+    const avatarUrl = otherParticipant.avatar_url;
 
     console.log('Using participant:', {
       id: otherParticipant.id,
       username: otherParticipant.username,
       displayName: otherParticipant.display_name,
-      isCurrentUser: otherParticipant.id === currentUserId,
-      isSelfMessage,
       avatarUrl,
     });
 

@@ -27,23 +27,22 @@ export default function OverallActivity() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isUpdating, setIsUpdating] = useState(false);  // New state for background updates
+  const [isUpdating, setIsUpdating] = useState(false); // New state for background updates
 
   useEffect(() => {
-    fetchActivityStats();
-  }, []);
-
-  const handleTimeRangeChange = async (newRange: TimeRange) => {
-    setTimeRange(newRange);
     setIsUpdating(true);
-    await fetchActivityStats();
-    setIsUpdating(false);
+    fetchActivityStats()
+      .catch(() => {})
+      .finally(() => setIsUpdating(false));
+  }, [timeRange]); // Add timeRange as dependency
+
+  const handleTimeRangeChange = (newRange: TimeRange) => {
+    setTimeRange(newRange);
   };
 
   const fetchActivityStats = async () => {
     try {
       setError(null);
-      
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setError('Not authenticated');
@@ -52,56 +51,50 @@ export default function OverallActivity() {
 
       const now = new Date();
       let startDate = new Date();
+      let endDate = new Date();
 
       // Calculate date range based on selected timeRange
       switch (timeRange) {
         case 'day':
-          // Set to start of current day
-          startDate.setHours(0, 0, 0, 0);
-          // Set end date to end of current day
-          const endDate = new Date(startDate);
-          endDate.setHours(23, 59, 59, 999);
-          
-          // Query specifically for today's activities using activity_date
-          const { data: todayData, error: todayError } = await supabase
-            .from('activities')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('activity_date', startDate.toISOString().split('T')[0]);
-
-          if (todayError) throw todayError;
-
-          const totalDuration = todayData?.reduce((sum, activity) => {
-            return sum + (activity.duration_minutes || 0);
-          }, 0) || 0;
-
-          setStats({
-            total_activities: todayData?.length || 0,
-            total_duration: totalDuration,
-          });
-          return;
-
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
         case 'week':
+          startDate = new Date(now);
           startDate.setDate(now.getDate() - 7);
+          startDate.setHours(0, 0, 0, 0);
+          endDate = now;
           break;
         case 'month':
-          startDate.setDate(1);
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1); // First day of month
+          endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of month
           break;
       }
 
-      // For week and month views, continue using created_at for historical data
-      const formattedStartDate = startDate.toISOString();
-      const formattedEndDate = now.toISOString();
+      // Format dates to match YYYY-MM-DD format
+      const formatDateToString = (date: Date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      const formattedStartDate = formatDateToString(startDate);
+      const formattedEndDate = formatDateToString(endDate);
+
+      console.log('Query date range:', { formattedStartDate, formattedEndDate });
 
       const { data, error: fetchError } = await supabase
         .from('activities')
         .select('*')
         .eq('user_id', user.id)
-        .gte('created_at', formattedStartDate)
-        .lte('created_at', formattedEndDate)
-        .order('created_at', { ascending: false });
+        .gte('activity_date', formattedStartDate)
+        .lte('activity_date', formattedEndDate)
+        .order('activity_date', { ascending: false });
 
       if (fetchError) throw fetchError;
+
+      console.log('Fetched activities:', data);
 
       const totalDuration = data?.reduce((sum, activity) => {
         return sum + (activity.duration_minutes || 0);
@@ -111,7 +104,6 @@ export default function OverallActivity() {
         total_activities: data?.length || 0,
         total_duration: totalDuration,
       });
-
     } catch (error) {
       console.error('Error fetching activity stats:', error);
       setError('Failed to load activity statistics');
@@ -129,20 +121,35 @@ export default function OverallActivity() {
   const getDateRange = () => {
     const now = new Date();
     if (timeRange === 'day') {
-      return now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return now.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
     } else if (timeRange === 'week') {
       const start = new Date(now);
       start.setDate(now.getDate() - 7);
-      return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+      return `${start.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      })} - ${now.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      })}`;
     } else {
-      return `${now.toLocaleDateString('en-US', { month: 'short' })} 1 - ${now.toLocaleDateString('en-US', { month: 'short' })} ${new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()}`;
+      return `${now.toLocaleDateString('en-US', {
+        month: 'short',
+      })} 1 - ${now.toLocaleDateString('en-US', { month: 'short' })} ${new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        0
+      ).getDate()}`;
     }
   };
 
   const formatDuration = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
-    return hours > 0 
+    return hours > 0
       ? `${hours}h ${remainingMinutes}m`
       : `${remainingMinutes}m`;
   };
@@ -156,7 +163,7 @@ export default function OverallActivity() {
   }
 
   return (
-    <ScrollView 
+    <ScrollView
       style={styles.container}
       refreshControl={
         <RefreshControl
@@ -171,26 +178,50 @@ export default function OverallActivity() {
 
         <View style={styles.timeRangeContainer}>
           <TouchableOpacity
-            style={[styles.timeRangeButton, timeRange === 'day' && styles.activeTimeRange]}
+            style={[
+              styles.timeRangeButton,
+              timeRange === 'day' && styles.activeTimeRange,
+            ]}
             onPress={() => handleTimeRangeChange('day')}
           >
-            <Text style={[styles.timeRangeText, timeRange === 'day' && styles.activeTimeRangeText]}>
+            <Text
+              style={[
+                styles.timeRangeText,
+                timeRange === 'day' && styles.activeTimeRangeText,
+              ]}
+            >
               TODAY
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.timeRangeButton, timeRange === 'week' && styles.activeTimeRange]}
+            style={[
+              styles.timeRangeButton,
+              timeRange === 'week' && styles.activeTimeRange,
+            ]}
             onPress={() => handleTimeRangeChange('week')}
           >
-            <Text style={[styles.timeRangeText, timeRange === 'week' && styles.activeTimeRangeText]}>
+            <Text
+              style={[
+                styles.timeRangeText,
+                timeRange === 'week' && styles.activeTimeRangeText,
+              ]}
+            >
               WEEK
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.timeRangeButton, timeRange === 'month' && styles.activeTimeRange]}
+            style={[
+              styles.timeRangeButton,
+              timeRange === 'month' && styles.activeTimeRange,
+            ]}
             onPress={() => handleTimeRangeChange('month')}
           >
-            <Text style={[styles.timeRangeText, timeRange === 'month' && styles.activeTimeRangeText]}>
+            <Text
+              style={[
+                styles.timeRangeText,
+                timeRange === 'month' && styles.activeTimeRangeText,
+              ]}
+            >
               MONTH
             </Text>
           </TouchableOpacity>
@@ -201,7 +232,7 @@ export default function OverallActivity() {
         {error ? (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.retryButton}
               onPress={fetchActivityStats}
             >
@@ -213,29 +244,46 @@ export default function OverallActivity() {
             <View style={styles.circleContainer}>
               <View style={styles.circle}>
                 {isUpdating ? (
-                  <ActivityIndicator color="#b0fb50" style={styles.inlineLoader} />
+                  <ActivityIndicator
+                    color="#b0fb50"
+                    style={styles.inlineLoader}
+                  />
                 ) : (
                   <>
-                    <Text style={styles.circleNumber}>{stats.total_activities}</Text>
+                    <Text style={styles.circleNumber}>
+                      {stats.total_activities}
+                    </Text>
                     <Text style={styles.circleLabel}>Activities</Text>
                   </>
                 )}
               </View>
             </View>
 
-            <View style={[styles.additionalStats, isUpdating && styles.updating]}>
+            <View
+              style={[styles.additionalStats, isUpdating && styles.updating]}
+            >
               <View style={styles.statItem}>
-                <MaterialCommunityIcons name="clock-outline" size={24} color="#666666" />
+                <MaterialCommunityIcons
+                  name="clock-outline"
+                  size={24}
+                  color="#666666"
+                />
                 <Text style={styles.statLabel}>Total Time</Text>
-                <Text style={styles.statValue}>{formatDuration(stats.total_duration)}</Text>
+                <Text style={styles.statValue}>
+                  {formatDuration(stats.total_duration)}
+                </Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
                 <MaterialCommunityIcons name="fire" size={24} color="#666666" />
                 <Text style={styles.statLabel}>Avg. Duration</Text>
                 <Text style={styles.statValue}>
-                  {stats.total_activities > 0 
-                    ? formatDuration(Math.round(stats.total_duration / stats.total_activities))
+                  {stats.total_activities > 0
+                    ? formatDuration(
+                        Math.round(
+                          stats.total_duration / stats.total_activities
+                        )
+                      )
                     : '0m'}
                 </Text>
               </View>
