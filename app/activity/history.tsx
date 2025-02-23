@@ -22,7 +22,8 @@ type Activity = {
   start_time: string;
   duration_minutes: number;
   fitness_studio: string;
-  trainer: string;
+  trainer_id: string | null;
+  trainer_name: string | null;
   notes: string;
   created_at: string;
 };
@@ -129,8 +130,11 @@ export default function ClassHistory() {
             {item.fitness_studio && (
               <Text style={styles.location}>{item.fitness_studio}</Text>
             )}
-            {item.trainer && (
-              <Text style={styles.instructor}>w/ {item.trainer}</Text>
+            {item.trainer_name && (
+              <View style={styles.trainerContainer}>
+                <MaterialCommunityIcons name="account-check" size={16} color="#b0fb50" />
+                <Text style={styles.trainerName}>w/ {item.trainer_name}</Text>
+              </View>
             )}
           </View>
         </View>
@@ -302,9 +306,15 @@ const styles = StyleSheet.create({
     color: '#666666',
     marginBottom: 4,
   },
-  instructor: {
+  trainerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  trainerName: {
     fontSize: 14,
-    color: '#666666',
+    color: '#b0fb50',
+    marginLeft: 6,
   },
   actions: {
     flexDirection: 'row',

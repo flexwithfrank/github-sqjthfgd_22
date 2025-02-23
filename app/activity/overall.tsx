@@ -56,8 +56,31 @@ export default function OverallActivity() {
       // Calculate date range based on selected timeRange
       switch (timeRange) {
         case 'day':
+          // Set to start of current day
           startDate.setHours(0, 0, 0, 0);
-          break;
+          // Set end date to end of current day
+          const endDate = new Date(startDate);
+          endDate.setHours(23, 59, 59, 999);
+          
+          // Query specifically for today's activities using activity_date
+          const { data: todayData, error: todayError } = await supabase
+            .from('activities')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('activity_date', startDate.toISOString().split('T')[0]);
+
+          if (todayError) throw todayError;
+
+          const totalDuration = todayData?.reduce((sum, activity) => {
+            return sum + (activity.duration_minutes || 0);
+          }, 0) || 0;
+
+          setStats({
+            total_activities: todayData?.length || 0,
+            total_duration: totalDuration,
+          });
+          return;
+
         case 'week':
           startDate.setDate(now.getDate() - 7);
           break;
@@ -66,24 +89,21 @@ export default function OverallActivity() {
           break;
       }
 
-      // Format dates for SQL query - include time component for more precise filtering
+      // For week and month views, continue using created_at for historical data
       const formattedStartDate = startDate.toISOString();
       const formattedEndDate = now.toISOString();
 
-      // Updated query to select all necessary fields and use proper date filtering
       const { data, error: fetchError } = await supabase
         .from('activities')
-        .select('*')  // Select all fields to ensure we don't miss any activities
+        .select('*')
         .eq('user_id', user.id)
-        .gte('created_at', formattedStartDate)  // Use created_at instead of activity_date
+        .gte('created_at', formattedStartDate)
         .lte('created_at', formattedEndDate)
         .order('created_at', { ascending: false });
 
       if (fetchError) throw fetchError;
 
-      // Process the data
       const totalDuration = data?.reduce((sum, activity) => {
-        // Ensure we only count activities with valid duration
         return sum + (activity.duration_minutes || 0);
       }, 0) || 0;
 
