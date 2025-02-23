@@ -107,7 +107,7 @@ export default function HelpScreen() {
 
         <View>
           <Image
-            source={{ uri: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=1200&h=800&fit=crop' }}
+            source={{ uri: 'https://ik.imagekit.io/cv3vwtali/help_center%20(1).png?updatedAt=1740283122516' }}
             style={styles.heroImage}
           />
           <LinearGradient
