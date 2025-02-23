@@ -16,6 +16,7 @@ import { supabase } from '../../lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { RSVPSheet } from '../../components/ui/RSVPSheet';
+import { EditEventSheet } from '../../components/ui/EditEventSheet';
 
 type Event = {
   id: string;
@@ -46,17 +47,40 @@ export default function EventDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showRSVP, setShowRSVP] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const [hasRSVP, setHasRSVP] = useState(false);
   const [totalAttendees, setTotalAttendees] = useState(0);
+  const [isTrainer, setIsTrainer] = useState(false);
+  const [isEventCreator, setIsEventCreator] = useState(false);
 
   useEffect(() => {
     fetchEvent();
     checkRSVPStatus();
+    fetchAttendeeCount();
+    checkUserRole();
   }, [id]);
 
-  useEffect(() => {
-    fetchAttendeeCount();
-  }, [id]);
+  const checkUserRole = async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, role_verified')
+        .eq('id', user.id)
+        .single();
+
+      setIsTrainer(profile?.role === 'trainer' && profile?.role_verified);
+      if (event) {
+        setIsEventCreator(event.created_by === user.id);
+      }
+    } catch (error) {
+      console.error('Error checking user role:', error);
+    }
+  };
 
   const fetchEvent = async () => {
     try {
@@ -78,6 +102,14 @@ export default function EventDetailsScreen() {
 
       if (error) throw error;
       setEvent(data);
+
+      // Check if current user is the event creator
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user && data) {
+        setIsEventCreator(data.created_by === user.id);
+      }
     } catch (error) {
       console.error('Error fetching event:', error);
       setError('Failed to load event details');
@@ -109,7 +141,6 @@ export default function EventDetailsScreen() {
 
   const fetchAttendeeCount = async () => {
     try {
-      // Get all RSVPs for this event with their guest counts
       const { data, error } = await supabase
         .from('event_rsvps')
         .select('guest_count')
@@ -118,10 +149,7 @@ export default function EventDetailsScreen() {
 
       if (error) throw error;
 
-      // Calculate total attendees:
-      // Each RSVP counts as 1 person (the person who RSVP'd) plus their guests
       const total = data.reduce((sum, rsvp) => {
-        // Add 1 for the RSVP person plus their guests
         return sum + 1 + (parseInt(rsvp.guest_count) || 0);
       }, 0);
 
@@ -153,6 +181,10 @@ export default function EventDetailsScreen() {
   const handleRSVPSuccess = () => {
     setHasRSVP(true);
     fetchAttendeeCount();
+  };
+
+  const handleEditSuccess = () => {
+    fetchEvent();
   };
 
   if (loading) {
@@ -198,6 +230,18 @@ export default function EventDetailsScreen() {
               />
             </TouchableOpacity>
             <View style={styles.headerActions}>
+              {isTrainer && isEventCreator && (
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => setShowEdit(true)}
+                >
+                  <MaterialCommunityIcons
+                    name="pencil"
+                    size={24}
+                    color="#ffffff"
+                  />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={handleShare}
@@ -348,6 +392,14 @@ export default function EventDetailsScreen() {
           handleRSVPSuccess();
           fetchAttendeeCount();
         }}
+      />
+
+      <EditEventSheet
+        visible={showEdit}
+        onClose={() => setShowEdit(false)}
+        event={event}
+        onSuccess={handleEditSuccess}
+        onDelete={() => router.replace('/(tabs)')} // Navigate back to tabs after deletion
       />
     </View>
   );

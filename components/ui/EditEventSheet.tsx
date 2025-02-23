@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
+  Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
@@ -21,13 +22,36 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 
-interface CreateEventSheetProps {
+type Event = {
+  id: string;
+  title: string;
+  description: string;
+  image_url: string;
+  start_date: string;
+  end_date: string;
+  location: string;
+  location_url: string;
+  highlights: Array<{
+    icon: string;
+    text: string;
+  }>;
+};
+
+interface EditEventSheetProps {
   visible: boolean;
   onClose: () => void;
+  event: Event;
   onSuccess?: () => void;
+  onDelete?: () => void;
 }
 
-export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventSheetProps) {
+export function EditEventSheet({
+  visible,
+  onClose,
+  event,
+  onSuccess,
+  onDelete,
+}: EditEventSheetProps) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,19 +60,28 @@ export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventShe
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
   const [form, setForm] = useState({
-    title: '',
-    description: '',
-    location: '',
-    location_url: '',
-    start_date: new Date(),
-    end_date: new Date(Date.now() + 3600000), // Default to 1 hour later
-    highlights: [
-      { icon: 'check-circle', text: '' },
-      { icon: 'check-circle', text: '' },
-      { icon: 'check-circle', text: '' },
-      { icon: 'check-circle', text: '' }
-    ]
+    title: event.title,
+    description: event.description,
+    location: event.location,
+    location_url: event.location_url,
+    start_date: new Date(event.start_date),
+    end_date: new Date(event.end_date),
+    highlights: event.highlights,
   });
+
+  useEffect(() => {
+    // Update form when event changes
+    setForm({
+      title: event.title,
+      description: event.description,
+      location: event.location,
+      location_url: event.location_url,
+      start_date: new Date(event.start_date),
+      end_date: new Date(event.end_date),
+      highlights: event.highlights,
+    });
+    setSelectedImage(null);
+  }, [event]);
 
   const pickImage = async () => {
     try {
@@ -68,10 +101,10 @@ export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventShe
     }
   };
 
-  const uploadImage = async (imageUri: string, eventId: string) => {
+  const uploadImage = async (imageUri: string) => {
     try {
       const fileExt = imageUri.split('.').pop();
-      const fileName = `${eventId}_${Date.now()}.${fileExt}`;
+      const fileName = `${event.id}_${Date.now()}.${fileExt}`;
       const filePath = `events/${fileName}`;
 
       const base64 = await FileSystem.readAsStringAsync(imageUri, {
@@ -92,7 +125,8 @@ export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventShe
 
       if (error) throw error;
 
-      return supabase.storage.from('events').getPublicUrl(filePath).data.publicUrl;
+      return supabase.storage.from('events').getPublicUrl(filePath).data
+        .publicUrl;
     } catch (error) {
       console.error('Upload failed:', error);
       return null;
@@ -108,70 +142,94 @@ export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventShe
       if (!form.title.trim()) throw new Error('Title is required');
       if (!form.description.trim()) throw new Error('Description is required');
       if (!form.location.trim()) throw new Error('Location is required');
-      if (!selectedImage) throw new Error('Event image is required');
-      if (form.end_date <= form.start_date) throw new Error('End time must be after start time');
+      if (form.end_date <= form.start_date)
+        throw new Error('End time must be after start time');
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      let imageUrl = event.image_url;
 
-      // Create event
-      const { data: event, error: eventError } = await supabase
+      // Upload new image if selected
+      if (selectedImage) {
+        const newImageUrl = await uploadImage(selectedImage);
+        if (newImageUrl) {
+          imageUrl = newImageUrl;
+        }
+      }
+
+      // Update event
+      const { error: updateError } = await supabase
         .from('events')
-        .insert({
+        .update({
           title: form.title.trim(),
           description: form.description.trim(),
           location: form.location.trim(),
           location_url: form.location_url.trim(),
           start_date: form.start_date.toISOString(),
           end_date: form.end_date.toISOString(),
-          created_by: user.id,
-          highlights: form.highlights.filter(h => h.text.trim()).map(h => ({
-            icon: h.icon,
-            text: h.text.trim()
-          }))
+          image_url: imageUrl,
+          highlights: form.highlights,
+          updated_at: new Date().toISOString(),
         })
-        .select()
-        .single();
-
-      if (eventError) throw eventError;
-
-      // Upload image
-      const imageUrl = await uploadImage(selectedImage, event.id);
-      if (!imageUrl) throw new Error('Failed to upload image');
-
-      // Update event with image URL
-      const { error: updateError } = await supabase
-        .from('events')
-        .update({ image_url: imageUrl })
         .eq('id', event.id);
 
       if (updateError) throw updateError;
 
-      // Reset form
-      setForm({
-        title: '',
-        description: '',
-        location: '',
-        location_url: '',
-        start_date: new Date(),
-        end_date: new Date(Date.now() + 3600000),
-        highlights: [
-          { icon: 'account-group', text: '' },
-          { icon: 'timer', text: '' },
-          { icon: 'information', text: '' },
-          { icon: 'water', text: '' }
-        ]
-      });
-      setSelectedImage(null);
-      
       onSuccess?.();
       onClose();
     } catch (error: any) {
-      console.error('Error creating event:', error);
-      setError(error.message || 'Failed to create event');
+      console.error('Error updating event:', error);
+      setError(error.message || 'Failed to update event');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDelete = async () => {
+    Alert.alert(
+      'Delete Event',
+      'Are you sure you want to delete this event? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              setError(null);
+
+              // Delete event from database
+              const { error: deleteError } = await supabase
+                .from('events')
+                .delete()
+                .eq('id', event.id);
+
+              if (deleteError) throw deleteError;
+
+              // Delete event image from storage if it exists
+              if (event.image_url) {
+                const imagePath = event.image_url.split('/').pop();
+                if (imagePath) {
+                  await supabase.storage
+                    .from('events')
+                    .remove([`events/${imagePath}`]);
+                }
+              }
+
+              onDelete?.();
+              onClose();
+            } catch (error: any) {
+              console.error('Error deleting event:', error);
+              setError(error.message || 'Failed to delete event');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -188,31 +246,58 @@ export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventShe
         >
           <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
             <View style={styles.header}>
-              <Text style={styles.title}>Create Event</Text>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={onClose}
-              >
-                <MaterialCommunityIcons name="close" size={24} color="#ffffff" />
-              </TouchableOpacity>
+              <Text style={styles.title}>Edit Event</Text>
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={handleDelete}
+                >
+                  <MaterialCommunityIcons
+                    name="delete"
+                    size={24}
+                    color="#ff4444"
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                  <MaterialCommunityIcons
+                    name="close"
+                    size={24}
+                    color="#ffffff"
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <ScrollView style={styles.content}>
               <TouchableOpacity
-                style={[styles.imageUpload, selectedImage && styles.imagePreviewContainer]}
+                style={[
+                  styles.imageUpload,
+                  selectedImage && styles.imagePreviewContainer,
+                ]}
                 onPress={pickImage}
               >
-                {selectedImage ? (
+                {selectedImage || event.image_url ? (
                   <>
-                    <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
+                    <Image
+                      source={{ uri: selectedImage || event.image_url }}
+                      style={styles.imagePreview}
+                    />
                     <View style={styles.imageOverlay}>
-                      <MaterialCommunityIcons name="camera" size={24} color="#ffffff" />
+                      <MaterialCommunityIcons
+                        name="camera"
+                        size={24}
+                        color="#ffffff"
+                      />
                       <Text style={styles.imageOverlayText}>Change Image</Text>
                     </View>
                   </>
                 ) : (
                   <>
-                    <MaterialCommunityIcons name="image-plus" size={32} color="#666666" />
+                    <MaterialCommunityIcons
+                      name="image-plus"
+                      size={32}
+                      color="#666666"
+                    />
                     <Text style={styles.imageUploadText}>Add Event Image</Text>
                   </>
                 )}
@@ -235,7 +320,9 @@ export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventShe
                   <TextInput
                     style={[styles.input, styles.textArea]}
                     value={form.description}
-                    onChangeText={(text) => setForm({ ...form, description: text })}
+                    onChangeText={(text) =>
+                      setForm({ ...form, description: text })
+                    }
                     placeholder="Describe your event"
                     placeholderTextColor="#666666"
                     multiline
@@ -248,7 +335,9 @@ export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventShe
                   <TextInput
                     style={styles.input}
                     value={form.location}
-                    onChangeText={(text) => setForm({ ...form, location: text })}
+                    onChangeText={(text) =>
+                      setForm({ ...form, location: text })
+                    }
                     placeholder="Event location"
                     placeholderTextColor="#666666"
                   />
@@ -259,7 +348,9 @@ export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventShe
                   <TextInput
                     style={styles.input}
                     value={form.location_url}
-                    onChangeText={(text) => setForm({ ...form, location_url: text })}
+                    onChangeText={(text) =>
+                      setForm({ ...form, location_url: text })
+                    }
                     placeholder="Google Maps URL"
                     placeholderTextColor="#666666"
                     autoCapitalize="none"
@@ -273,7 +364,11 @@ export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventShe
                     style={styles.dateButton}
                     onPress={() => setShowStartDatePicker(true)}
                   >
-                    <MaterialCommunityIcons name="calendar" size={20} color="#b0fb50" />
+                    <MaterialCommunityIcons
+                      name="calendar"
+                      size={20}
+                      color="#b0fb50"
+                    />
                     <Text style={styles.dateButtonText}>
                       Starts: {form.start_date.toLocaleString()}
                     </Text>
@@ -283,7 +378,11 @@ export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventShe
                     style={styles.dateButton}
                     onPress={() => setShowEndDatePicker(true)}
                   >
-                    <MaterialCommunityIcons name="calendar-end" size={20} color="#b0fb50" />
+                    <MaterialCommunityIcons
+                      name="calendar-end"
+                      size={20}
+                      color="#b0fb50"
+                    />
                     <Text style={styles.dateButtonText}>
                       Ends: {form.end_date.toLocaleString()}
                     </Text>
@@ -297,7 +396,7 @@ export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventShe
                       setForm({
                         ...form,
                         start_date: date,
-                        end_date: new Date(date.getTime() + 3600000)
+                        end_date: new Date(date.getTime() + 3600000),
                       });
                     }}
                     onCancel={() => setShowStartDatePicker(false)}
@@ -341,19 +440,20 @@ export function CreateEventSheet({ visible, onClose, onSuccess }: CreateEventShe
                   ))}
                 </View>
 
-                {error && (
-                  <Text style={styles.errorText}>{error}</Text>
-                )}
+                {error && <Text style={styles.errorText}>{error}</Text>}
 
                 <TouchableOpacity
-                  style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+                  style={[
+                    styles.submitButton,
+                    loading && styles.submitButtonDisabled,
+                  ]}
                   onPress={handleSubmit}
                   disabled={loading}
                 >
                   {loading ? (
                     <ActivityIndicator color="#000000" />
                   ) : (
-                    <Text style={styles.submitButtonText}>Create Event</Text>
+                    <Text style={styles.submitButtonText}>Save Changes</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -389,6 +489,14 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  deleteButton: {
+    padding: 4,
   },
   closeButton: {
     padding: 4,
@@ -488,7 +596,7 @@ const styles = StyleSheet.create({
   submitButton: {
     backgroundColor: '#b0fb50',
     paddingVertical: 16,
-    borderRadius: 8,
+    borderRadius: 50,
     alignItems: 'center',
     marginTop: 8,
   },
