@@ -80,23 +80,21 @@ export default function MessagesScreen() {
 
       const { data, error: fetchError } = await supabase
         .from('conversations')
-        .select(
-          `
+        .select(`
           id,
           last_message,
           last_message_at,
           updated_at,
-          participants:conversation_participants(
-            profiles (
+          participants:conversation_participants!inner (
+            user_id,
+            profiles!inner (
               id,
               username,
               display_name,
               avatar_url
             )
           )
-        `
-        )
-        .eq('conversation_participants.user_id', userId)
+        `)
         .order('updated_at', { ascending: false });
 
       if (fetchError) {
@@ -105,30 +103,13 @@ export default function MessagesScreen() {
         return;
       }
 
-      console.log(`Retrieved ${data?.length || 0} conversations from Supabase`);
+      // Filter conversations to only include ones where the current user is a participant
+      const validConversations = data?.filter(conv => 
+        conv.participants?.some(p => p.user_id === userId)
+      ) || [];
 
-      if (!data || data.length === 0) {
-        console.log('No conversations found');
-        setConversations([]);
-      } else {
-        // Filter out conversations with no participants or invalid data
-        const validConversations = data.filter(
-          (conv) =>
-            conv.participants &&
-            conv.participants.length > 0 &&
-            conv.participants.some((p) => p.profiles && p.profiles.id)
-        );
-
-        console.log(`Loaded ${validConversations.length} valid conversations`);
-
-        if (validConversations.length === 0 && data.length > 0) {
-          console.warn(
-            'Found conversations but all were filtered out due to invalid participant data'
-          );
-        }
-
-        setConversations(validConversations);
-      }
+      console.log(`Loaded ${validConversations.length} valid conversations`);
+      setConversations(validConversations);
       setError(null);
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -288,36 +269,17 @@ export default function MessagesScreen() {
       return null;
     }
 
-    debugParticipants(conversation);
+    // Find the participant that is not the current user
+    const otherParticipant = conversation.participants.find(
+      p => p.profiles.id !== currentUserId
+    );
 
-    // Get valid profiles (filter out any that might be null/undefined)
-    const validProfiles = conversation.participants
-      .filter((p) => p.profiles && p.profiles.id)
-      .map((p) => p.profiles);
-
-    if (validProfiles.length === 0) {
-      console.warn(`No valid profiles in conversation ${conversation.id}`);
+    if (!otherParticipant) {
+      console.warn(`No other participant found in conversation ${conversation.id}`);
       return null;
     }
 
-    // First, try to find participants that aren't the current user
-    const otherProfiles = validProfiles.filter(
-      (profile) => profile.id !== currentUserId
-    );
-
-    // If we found other participants, return the first one
-    if (otherProfiles.length > 0) {
-      console.log(
-        `Found ${otherProfiles.length} other participants for conversation ${conversation.id}`
-      );
-      return otherProfiles[0];
-    }
-
-    // If all participants are the current user (self-message), return the first one
-    console.log(
-      `Only found current user in conversation ${conversation.id} - possible self-message`
-    );
-    return validProfiles[0];
+    return otherParticipant.profiles;
   };
 
   const renderItem = ({ item: conversation }: { item: Conversation }) => {
